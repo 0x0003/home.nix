@@ -26,9 +26,9 @@ Activates automatically with direnv. Provides `deadnix`, `nixpkgs-fmt`,
 Too much friction for my liking: *every* config change requires a full
 re-evaluation: making small edits feels awful; the setup is tied
 to Nix being installed on the machine.
-chezmoi applies instantly, and it works regardless of Nix
-availability: it's just a single statically-linked binary
-that doesn't require root access even for bootstrapping.
+chezmoi applies instantly (in symlink mode), and it works regardless
+of Nix availability: it's a single statically-linked binary that
+doesn't require root access even for bootstrapping.
 
 That said, Nix is great for its devshells and overlays. It
 allows for partial upgrades, and mixing different package
