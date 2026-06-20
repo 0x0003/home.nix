@@ -1,6 +1,7 @@
 [
   ./_general.nix
   ./dev.nix
+  ./direnv.nix
   ./llm.nix
   ./lsp.nix
   ./nav.nix
