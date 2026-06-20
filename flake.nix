@@ -20,7 +20,7 @@
         inherit pkgs;
         modules = [ ./home.nix ];
         extraSpecialArgs = {
-          vscode-langservers-extracted = pinned-pkgs.legacyPackages.${system}.vscode-langservers-extracted;
+          inherit (pinned-pkgs.legacyPackages.${system}) vscode-langservers-extracted;
         };
       };
 
