@@ -1,0 +1,9 @@
+[
+  ./_general.nix
+  ./dev.nix
+  ./llm.nix
+  ./lsp.nix
+  ./nav.nix
+  ./net.nix
+  ./pass.nix
+]

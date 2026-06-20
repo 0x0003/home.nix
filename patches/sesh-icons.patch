@@ -1,0 +1,27 @@
+--- a/icon/icon.go
++++ b/icon/icon.go
+@@ -23,8 +23,8 @@
+ 
+ var (
+-	zoxideIcon     string = ""
+-	tmuxIcon       string = ""
+-	configIcon     string = ""
++	zoxideIcon     string = ""
++	tmuxIcon       string = ""
++	configIcon     string = ""
+ 	tmuxinatorIcon string = ""
+ 	tmuxPaneIcon       string = ""
+ )
+@@ -37,9 +37,9 @@
+ 
+ // Glyphs maps session source names to their icon and color.
+ var Glyphs = map[string]Glyph{
+-	"tmux":       {Icon: tmuxIcon, ColorCode: 34},
+-	"config":     {Icon: configIcon, ColorCode: 90},
+-	"zoxide":     {Icon: zoxideIcon, ColorCode: 36},
++	"tmux":       {Icon: tmuxIcon, ColorCode: 92},
++	"config":     {Icon: configIcon, ColorCode: 93},
++	"zoxide":     {Icon: zoxideIcon, ColorCode: 94},
+ 	"tmuxinator": {Icon: tmuxinatorIcon, ColorCode: 33},
+ 	"tmux-pane":  {Icon: tmuxPaneIcon, ColorCode: 32},
+ }
