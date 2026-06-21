@@ -4,17 +4,13 @@ Manages **packages only**; [dotfiles and secrets](https://github.com/0x0003/dotf
 
 ## Quick start
 
-With `chezmoi` available in path:
-```sh
-chezmoi init --mode symlink --apply 0x0003
-home-manager switch
-```
-
 Standalone:
 ```sh
 git clone https://github.com/0x0003/dotfiles.nix ~/.config/home-manager
-home-manager switch
+nix --extra-experimental-features "nix-command flakes" run "home-manager/master#home-manager" -- switch --flake .#tuna
 ```
+
+See [0x0003/dotfiles](https://github.com/0x0003/dotfiles) for full package.
 
 ## Dev shell
 
