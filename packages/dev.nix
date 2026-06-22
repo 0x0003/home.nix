@@ -3,6 +3,7 @@
     git
     neovim
     tree-sitter
+    tree
     # vim
   ];
 }
