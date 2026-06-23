@@ -1,6 +1,6 @@
 Tracks [nixos-unstable](https://github.com/NixOS/nixpkgs/tree/nixos-unstable).
 
-Manages **packages only**; [dotfiles and secrets](https://github.com/0x0003/dotfiles) are managed by chezmoi.
+Manages **packages only**. Dotfiles are managed by chezmoi and live in [another repo](https://github.com/0x0003/dotfiles), which pulls this one as a git submodule.
 
 ## Quick start
 
@@ -19,15 +19,17 @@ Activates automatically with direnv. Provides `deadnix`, `nixpkgs-fmt`,
 
 ## Why not Nix + home-manager for dotfiles?
 
-Too much friction for my liking: *every* config change requires a full
-re-evaluation: making small edits feels awful; the setup is tied
-to Nix being installed on the machine.
-chezmoi applies instantly (in symlink mode), and it works regardless
-of Nix availability: it's a single statically-linked binary that
-doesn't require root access even for bootstrapping.
+First and most important: Nix doesn't run on Windows, which I frequently have to use.
 
-That said, Nix is great for its devshells and overlays. It
-allows for partial upgrades, and mixing different package
-sources is trivial.
+Second, too much friction for my liking. *Every* config change requires
+a full re-evaluation: making small edits feels awful. The setup is also
+tied to Nix being installed on the machine.
+Chezmoi keeps a source copy of my dotfiles and can sync changes both
+ways on demand - no expensive evaluation or build steps required.
+It also works regardless of Nix availability: it's a single statically
+linked binary that doesn't require root access even for bootstrapping.
+
+That said, Nix is great for its devshells and overlays. It allows
+for atomic upgrades, and mixing different package sources is trivial.
 Those features make it worth keeping around.
 
