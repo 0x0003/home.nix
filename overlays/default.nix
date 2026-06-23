@@ -1,6 +1,3 @@
-let
-  overlays = [
-    ./sesh-icons.nix
-  ];
-in
-map import overlays
+[
+  (import ./sesh-icons.nix)
+]

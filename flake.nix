@@ -13,12 +13,17 @@
   outputs = { nixpkgs, pinned-pkgs, home-manager, ... }:
     let
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system}.appendOverlays (import ./overlays);
+      pkgs = nixpkgs.legacyPackages.${system};
     in
     {
       homeConfigurations.tuna = home-manager.lib.homeManagerConfiguration {
         inherit pkgs;
-        modules = [ ./home.nix ];
+        modules = [
+          ./home.nix
+          {
+            nixpkgs.overlays = import ./overlays;
+          }
+        ];
         extraSpecialArgs = {
           inherit (pinned-pkgs.legacyPackages.${system}) vscode-langservers-extracted;
         };
