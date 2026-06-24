@@ -7,7 +7,7 @@ Manages **packages only**. Dotfiles are managed by chezmoi and live in [another 
 Standalone:
 ```sh
 git clone https://github.com/0x0003/dotfiles.nix ~/.config/home-manager
-nix --extra-experimental-features "nix-command flakes" run "home-manager/master#home-manager" -- switch --flake .#tuna
+nix --extra-experimental-features "nix-command flakes" run "home-manager/master#home-manager" -- switch --flake ~/.config/home-manager
 ```
 
 See [0x0003/dotfiles](https://github.com/0x0003/dotfiles) for full package.

@@ -14,9 +14,8 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
-    in
-    {
-      homeConfigurations.tuna = home-manager.lib.homeManagerConfiguration {
+
+      mkHome = { username, homeDirectory }: home-manager.lib.homeManagerConfiguration {
         inherit pkgs;
         modules = [
           ./home.nix
@@ -25,8 +24,15 @@
           }
         ];
         extraSpecialArgs = {
+          inherit username homeDirectory;
           inherit (pinned-pkgs.legacyPackages.${system}) vscode-langservers-extracted;
         };
+      };
+    in
+    {
+      homeConfigurations.tuna = mkHome {
+        username = "tuna";
+        homeDirectory = "/home/tuna";
       };
 
       devShells.${system}.default = pkgs.mkShellNoCC {

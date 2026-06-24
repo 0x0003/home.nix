@@ -1,7 +1,6 @@
-{ lib, ... }: {
+{ lib, username, homeDirectory, ... }: {
   home = {
-    username = "tuna";
-    homeDirectory = "/home/tuna";
+    inherit username homeDirectory;
     stateVersion = "24.11";
   };
 
