@@ -4,6 +4,7 @@
     neovim
     tree-sitter
     tree
+    gh
     # vim
   ];
 }
