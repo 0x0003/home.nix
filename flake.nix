@@ -14,16 +14,19 @@
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
 
+      listFiles = dir: with builtins;
+        map (x: dir + "/${x}") (sort lessThan (attrNames (readDir dir)));
+
       mkHome = { username, homeDirectory }: home-manager.lib.homeManagerConfiguration {
         inherit pkgs;
         modules = [
           ./home.nix
           {
-            nixpkgs.overlays = import ./overlays;
+            nixpkgs.overlays = map import (listFiles ./overlays);
           }
         ];
         extraSpecialArgs = {
-          inherit username homeDirectory;
+          inherit username homeDirectory listFiles;
         };
       };
     in
