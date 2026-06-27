@@ -1,4 +1,4 @@
-{ pkgs, vscode-langservers-extracted, ... }: {
+{ pkgs, ... }: {
   home.packages = with pkgs; [
     lua-language-server
     nil
