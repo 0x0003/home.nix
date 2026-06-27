@@ -8,7 +8,7 @@
     # irssi
     libqalculate
     wego
-    imagemagick
+    imagemagickBig
     jq
     zbar
   ];
