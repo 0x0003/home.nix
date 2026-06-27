@@ -6,5 +6,8 @@
     tree
     gh
     # vim
+    gitleaks
+    git-filter-repo
+    shellcheck
   ];
 }
