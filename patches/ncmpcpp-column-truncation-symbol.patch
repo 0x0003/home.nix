@@ -1,0 +1,99 @@
+diff --git a/src/display.cpp b/src/display.cpp
+index ddf8793..75f85ca 100644
+--- a/src/display.cpp
++++ b/src/display.cpp
+@@ -240,7 +240,7 @@ void showSongsInColumns(NC::Menu<T> &menu, const MPD::Song &s, const SongList &l
+ 		}
+ 		if (tag.empty() && it->display_empty_tag)
+ 			tag = ToWString(Config.empty_tag);
+-		wideCut(tag, width);
++		wideCut(tag, width, Config.column_truncation_symbol.empty() ? nullptr : &Config.column_truncation_symbol);
+ 
+ 		if (!discard_colors && it->color != NC::Color::Default)
+ 			menu << it->color;
+@@ -316,7 +316,7 @@ std::string Display::Columns(size_t list_width)
+ 		}
+ 		else
+ 			name = it->name;
+-		wideCut(name, width);
++		wideCut(name, width, Config.column_truncation_symbol.empty() ? nullptr : &Config.column_truncation_symbol);
+ 		
+ 		int x_off = std::max(0, width - int(wideLength(name)));
+ 		if (it->right_alignment)
+diff --git a/src/settings.cpp b/src/settings.cpp
+index ddde73e..afccb27 100644
+--- a/src/settings.cpp
++++ b/src/settings.cpp
+@@ -570,6 +570,9 @@ bool Configuration::read(const std::vector<std::string> &config_paths, bool igno
+ 	p.add("mouse_list_scroll_whole_page", &mouse_list_scroll_whole_page, "no", yes_no);
+ 	p.add("lines_scrolled", &lines_scrolled, "5");
+ 	p.add("empty_tag_marker", &empty_tag, "<empty>");
++	p.add("column_truncation_symbol", &column_truncation_symbol, "\xe2\x80\xa6", [](std::string v) {
++		return ToWString(std::move(v));
++	});
+ 	p.add("tags_separator", &MPD::Song::TagsSeparator, " | ");
+ 	p.add("tag_editor_extended_numeration", &tag_editor_extended_numeration, "no", yes_no);
+ 	p.add("media_library_sort_by_mtime", &media_library_sort_by_mtime, "no", yes_no);
+diff --git a/src/settings.h b/src/settings.h
+index e9a8af0..2537cf1 100644
+--- a/src/settings.h
++++ b/src/settings.h
+@@ -65,6 +65,7 @@ struct Configuration
+ 	std::string visualizer_data_source;
+ 	std::string visualizer_output_name;
+ 	std::string empty_tag;
++	std::wstring column_truncation_symbol;
+ 
+ 	Format::AST<char> song_list_format;
+ 	Format::AST<char> song_window_title_format;
+diff --git a/src/utility/wide_string.cpp b/src/utility/wide_string.cpp
+index 70edc93..5ef6f87 100644
+--- a/src/utility/wide_string.cpp
++++ b/src/utility/wide_string.cpp
+@@ -35,17 +35,30 @@ size_t wideLength(const std::wstring &ws)
+ 	return result;
+ }
+ 
+-void wideCut(std::wstring &ws, size_t max_length)
++void wideCut(std::wstring &ws, size_t max_length, const std::wstring *truncation_symbol)
+ {
++	size_t ellipsis_len = 0;
++	if (truncation_symbol)
++	{
++		ellipsis_len = wideLength(*truncation_symbol);
++		if (max_length < ellipsis_len)
++		{
++			ws.clear();
++			return;
++		}
++	}
++	size_t target = max_length - ellipsis_len;
+ 	size_t i = 0;
+-	int remained_len = max_length;
++	int remained_len = target;
+ 	for (; i < ws.length(); ++i)
+ 	{
+ 		remained_len -= std::max(wcwidth(ws[i]), 1);
+ 		if (remained_len < 0)
+ 		{
+ 			ws.resize(i);
+-			break;
++			if (truncation_symbol)
++				ws += *truncation_symbol;
++			return;
+ 		}
+ 	}
+ }
+diff --git a/src/utility/wide_string.h b/src/utility/wide_string.h
+index 009b4ab..4462a41 100644
+--- a/src/utility/wide_string.h
++++ b/src/utility/wide_string.h
+@@ -36,7 +36,7 @@ std::wstring ToWString(StringT &&s)
+ }
+ 
+ size_t wideLength(const std::wstring &ws);
+-void wideCut(std::wstring &ws, size_t max_length);
++void wideCut(std::wstring &ws, size_t max_length, const std::wstring *truncation_symbol = nullptr);
+ 
+ std::wstring wideShorten(const std::wstring &ws, size_t max_length);
+ inline std::string wideShorten(const std::string &s, size_t max_length)

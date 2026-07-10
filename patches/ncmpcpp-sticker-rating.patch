@@ -1,0 +1,246 @@
+diff --git a/src/curses/menu_impl.h b/src/curses/menu_impl.h
+index cddafa8..2eea4be 100644
+--- a/src/curses/menu_impl.h
++++ b/src/curses/menu_impl.h
+@@ -174,6 +174,8 @@ bool Menu<ItemT>::Goto(size_t y)
+ template <typename ItemT>
+ void Menu<ItemT>::refresh()
+ {
++	if (!m_window)
++		return;
+ 	if (m_items->empty())
+ 	{
+ 		Window::clear();
+diff --git a/src/curses/window.cpp b/src/curses/window.cpp
+index 6c0b6d6..01e5586 100644
+--- a/src/curses/window.cpp
++++ b/src/curses/window.cpp
+@@ -758,6 +758,8 @@ void Window::display()
+ 
+ void Window::refresh()
+ {
++	if (!m_window)
++		return;
+ 	prefresh(m_window, 0, 0, m_start_y, m_start_x, m_start_y+m_height-1, m_start_x+m_width-1);
+ }
+ 
+diff --git a/src/display.cpp b/src/display.cpp
+index ddf8793..16ec545 100644
+--- a/src/display.cpp
++++ b/src/display.cpp
+@@ -73,6 +73,8 @@ const wchar_t *toColumnName(char c)
+ 			return L"Comment";
+ 		case 'P':
+ 			return L"Priority";
++		case 'r':
++			return L"Rating";
+ 		default:
+ 			return L"?";
+ 	}
+diff --git a/src/mpdpp.cpp b/src/mpdpp.cpp
+index 9a92e5d..d671ec9 100644
+--- a/src/mpdpp.cpp
++++ b/src/mpdpp.cpp
+@@ -524,6 +524,30 @@ void Connection::SetReplayGainMode(ReplayGainMode mode)
+ 	checkErrors();
+ }
+ 
++std::string Connection::GetSticker(const std::string &uri, const std::string &name)
++{
++	prechecksNoCommandsList();
++	mpd_send_command(m_connection.get(), "sticker", "get", "song", uri.c_str(), name.c_str(), NULL);
++	std::string result;
++	if (mpd_pair *pair = mpd_recv_pair_named(m_connection.get(), "sticker"))
++	{
++		std::string s(pair->value);
++		size_t eq = s.find('=');
++		if (eq != std::string::npos)
++			result = s.substr(eq + 1);
++		mpd_return_pair(m_connection.get(), pair);
++	}
++	mpd_response_finish(m_connection.get());
++	auto err = mpd_connection_get_error(m_connection.get());
++	if (err == MPD_ERROR_SERVER
++	    && (mpd_connection_get_server_error(m_connection.get()) == MPD_SERVER_ERROR_NO_EXIST
++	        || mpd_connection_get_server_error(m_connection.get()) == MPD_SERVER_ERROR_UNKNOWN_CMD))
++		mpd_connection_clear_error(m_connection.get());
++	else if (err != MPD_ERROR_SUCCESS)
++		checkErrors();
++	return result;
++}
++
+ void Connection::SetCrossfade(unsigned crossfade)
+ {
+ 	prechecksNoCommandsList();
+diff --git a/src/mpdpp.h b/src/mpdpp.h
+index 902606d..10e7ac9 100644
+--- a/src/mpdpp.h
++++ b/src/mpdpp.h
+@@ -554,6 +554,8 @@ struct Connection
+ 	std::string GetReplayGainMode();
+ 	void SetReplayGainMode(ReplayGainMode);
+ 	
++	std::string GetSticker(const std::string &uri, const std::string &name);
++
+ 	void SetPriority(const MPD::Song &s, int prio);
+ 	
+ 	int AddSong(const std::string &, int = -1); // returns id of added song
+diff --git a/src/song.cpp b/src/song.cpp
+index c274d43..cc3fc87 100644
+--- a/src/song.cpp
++++ b/src/song.cpp
+@@ -25,6 +25,7 @@
+ #include <boost/lexical_cast.hpp>
+ #include <iostream>
+ #include <memory>
++#include <unordered_map>
+ 
+ #include "curses/window.h"
+ #include "song.h"
+@@ -33,6 +34,25 @@
+ 
+ namespace {
+ 
++std::unordered_map<std::string, std::string> &ratingCache()
++{
++	static std::unordered_map<std::string, std::string> cache;
++	return cache;
++}
++
++} // anonymous namespace
++
++namespace MPD {
++
++void clearRatingCache()
++{
++	ratingCache().clear();
++}
++
++} // namespace MPD
++
++namespace {
++
+ // Prepend '0' if the tag is a single digit number so that we get "expected"
+ // sort order with regular string comparison.
+ void format_numeric_tag(std::string &s)
+@@ -212,6 +232,59 @@ std::string Song::getPriority(unsigned idx) const
+ 	return boost::lexical_cast<std::string>(getPrio());
+ }
+ 
++std::string Song::getRating(unsigned idx) const
++{
++	if (idx > 0)
++		return "";
++	const char *uri_ptr = c_uri();
++	if (!uri_ptr || !*uri_ptr)
++		return " ";
++	std::string uri(uri_ptr);
++	auto &cache = ratingCache();
++	auto it = cache.find(uri);
++	if (it != cache.end())
++		return it->second;
++	std::string val;
++	try {
++		val = Mpd.GetSticker(uri, "rating");
++	} catch (...) {
++		cache[uri] = " ";
++		return " ";
++	}
++	if (val.empty())
++	{
++		cache[uri] = " ";
++		return " ";
++	}
++	int r = 0;
++	try {
++		r = boost::lexical_cast<int>(val);
++	} catch (...) {
++		cache[uri] = " ";
++		return " ";
++	}
++	if (r <= 0)
++	{
++		cache[uri] = " ";
++		return " ";
++	}
++	r = std::min(r, 10);
++	static const std::string kFull = "\xe2\x98\x85";  // U+2605 black star
++	static const std::string kHalf = "\xe2\xaf\xaa";  // U+2BEA star with left half black
++	static const std::string kEmpty = "\xe2\x98\x86"; // U+2606 white star
++	int full = r / 2;
++	int half = r % 2;
++	std::string result;
++	for (int i = 0; i < full; ++i)
++		result += kFull;
++	if (half)
++		result += kHalf;
++	for (int i = full + half; i < 5; ++i)
++		result += kEmpty;
++	cache[uri] = result;
++	return result;
++}
++
+ std::string MPD::Song::getTags(GetFunction f) const
+ {
+ 	assert(m_song);
+diff --git a/src/song.h b/src/song.h
+index a86b56b..d1d5cae 100644
+--- a/src/song.h
++++ b/src/song.h
+@@ -72,6 +72,7 @@ struct Song
+ 	virtual std::string getComment(unsigned idx = 0) const;
+ 	virtual std::string getLength(unsigned idx = 0) const;
+ 	virtual std::string getPriority(unsigned idx = 0) const;
++	virtual std::string getRating(unsigned idx = 0) const;
+ 	
+ 	virtual std::string getTags(GetFunction f) const;
+ 	
+@@ -110,6 +111,8 @@ private:
+ 	size_t m_hash;
+ };
+ 
++void clearRatingCache();
++
+ }
+ 
+ #endif // NCMPCPP_SONG_H
+diff --git a/src/status.cpp b/src/status.cpp
+index 6e86f47..0ab35c0 100644
+--- a/src/status.cpp
++++ b/src/status.cpp
+@@ -258,6 +258,13 @@ void Status::trace(bool update_timer, bool update_window_timeout)
+ 
+ void Status::update(int event)
+ {
++	static bool s_in_update = false;
++	if (s_in_update)
++		return;
++	s_in_update = true;
++	struct Guard { ~Guard() { s_in_update = false; } } guard;
++	if (event & (MPD_IDLE_STICKER | MPD_IDLE_PLAYLIST))
++		MPD::clearRatingCache();
+ 	auto st = Mpd.getStatus();
+ 	m_current_song_pos = st.currentSongPosition();
+ 	m_elapsed_time = st.elapsedTime();
+@@ -338,7 +345,7 @@ void Status::update(int event)
+ 	if (event & MPD_IDLE_PLAYER)
+ 		wFooter->refresh();
+ 
+-	if (event & (MPD_IDLE_PLAYLIST | MPD_IDLE_DATABASE | MPD_IDLE_PLAYER))
++	if (event & (MPD_IDLE_PLAYLIST | MPD_IDLE_DATABASE | MPD_IDLE_PLAYER | MPD_IDLE_STICKER))
+ 		applyToVisibleWindows(&BaseScreen::refreshWindow);
+ }
+ 
+diff --git a/src/utility/type_conversions.cpp b/src/utility/type_conversions.cpp
+index b546fa4..1a9eae1 100644
+--- a/src/utility/type_conversions.cpp
++++ b/src/utility/type_conversions.cpp
+@@ -196,6 +196,8 @@ MPD::Song::GetFunction charToGetFunction(char c)
+ 			return &MPD::Song::getComment;
+ 		case 'P':
+ 			return &MPD::Song::getPriority;
++		case 'r':
++			return &MPD::Song::getRating;
+ 		default:
+ 			return nullptr;
+ 	}

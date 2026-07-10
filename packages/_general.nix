@@ -8,8 +8,6 @@
     # irssi
     libqalculate
     wego
-    imagemagickBig
     jq
-    zbar
   ];
 }
