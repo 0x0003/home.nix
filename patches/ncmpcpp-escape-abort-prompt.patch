@@ -1,0 +1,32 @@
+diff --git a/src/curses/window.cpp b/src/curses/window.cpp
+index 6c0b6d6..1bf6e78 100644
+--- a/src/curses/window.cpp
++++ b/src/curses/window.cpp
+@@ -78,6 +78,12 @@ int read_key(FILE *)
+ 		}
+ 	}
+ 	while (result == ERR);
++	if (result == NC::Key::Escape && !w->isEscapeTerminalSequencesEnabled())
++	{
++		rl::aborted = true;
++		rl_done = 1;
++		return EOF;
++	}
+ 	return result;
+ }
+ 
+diff --git a/src/curses/window.h b/src/curses/window.h
+index edb93cf..5867444 100644
+--- a/src/curses/window.h
++++ b/src/curses/window.h
+@@ -332,7 +332,9 @@ struct Window
+ 	
+ 	/// @return current window's timeout
+ 	int getTimeout() const;
+-	
++
++	bool isEscapeTerminalSequencesEnabled() const { return m_escape_terminal_sequences; }
++
+ 	/// @return current mouse event if readKey() returned KEY_MOUSE
+ 	const MEVENT &getMouseEvent();
+ 
