@@ -42,7 +42,7 @@ index eaf75fe..f334900 100644
  	FooterHeight = Config.statusbar_visibility ? 2 : 1;
  }
 diff --git a/src/status.cpp b/src/status.cpp
-index 6e86f47..bdf3071 100644
+index 6e86f47..c5e3f57 100644
 --- a/src/status.cpp
 +++ b/src/status.cpp
 @@ -545,8 +545,7 @@ void Status::Changes::playerState()
@@ -55,7 +55,7 @@ index 6e86f47..bdf3071 100644
  	}
  	else if (Statusbar::isUnlocked() && Config.statusbar_visibility)
  	{
-@@ -705,41 +704,47 @@ void Status::Changes::elapsedTime(bool update_elapsed)
+@@ -705,41 +704,46 @@ void Status::Changes::elapsedTime(bool update_elapsed)
  			size_t first_len = wideLength(first.str());
  			size_t first_margin = std::max(tracklength.length()+1, VolumeState.length())*2;
  			size_t first_start = first_len < COLS-first_margin
@@ -94,22 +94,21 @@ index 6e86f47..bdf3071 100644
  
  			writeCyclicBuffer(first, *wHeader, first_line_scroll_begin,
 -			                  COLS-tracklength.length()-VolumeState.length()-1, L" ** ");
--
++			                  COLS-ps.length()-tracklength.length()-VolumeState.length()-switch_state.length()-3, L" ** ");
+ 
 -			*wHeader << NC::XY(0, 1)
 -			         << NC::TermManip::ClearToEOL
 -			         << Config.player_state_color
 -			         << ps
 -			         << NC::FormattedColor::End<>(Config.player_state_color)
 -			         << NC::XY(second_start, 1);
-+			                  COLS-ps.length()-tracklength.length()-VolumeState.length()-switch_state.length()-3, L" ** ");
- 
+-
 -			writeCyclicBuffer(second, *wHeader, second_line_scroll_begin,
 -			                  COLS-ps.length()-8-2, L" ** ");
-+			*wHeader << NC::XY(wHeader->getWidth()-VolumeState.length()-switch_state.length()-1, 0)
++			*wHeader << NC::XY(wHeader->getWidth()-VolumeState.length()-switch_state.length(), 0)
 +			         << Config.state_flags_color
 +			         << switch_state
-+			         << NC::FormattedColor::End<>(Config.state_flags_color)
-+			         << " ";
++			         << NC::FormattedColor::End<>(Config.state_flags_color);
  
  			*wHeader << NC::XY(wHeader->getWidth()-VolumeState.length(), 0)
  			         << Config.volume_color
@@ -121,12 +120,12 @@ index 6e86f47..bdf3071 100644
  	}
  	if (Progressbar::isUnlocked())
  		Progressbar::draw(m_elapsed_time, m_total_time);
-@@ -793,16 +798,10 @@ void Status::Changes::flags()
+@@ -793,16 +797,10 @@ void Status::Changes::flags()
  			switch_state += m_crossfade ? m_crossfade : '-';
  			switch_state += m_db_updating ? m_db_updating : '-';
  			switch_state += ']';
 -			*wHeader << NC::XY(COLS-switch_state.length(), 1)
-+			*wHeader << NC::XY(COLS-switch_state.length()-VolumeState.length()-1, 0)
++			*wHeader << NC::XY(COLS-switch_state.length()-VolumeState.length(), 0)
  			         << Config.state_flags_color
  			         << switch_state
  			         << NC::FormattedColor::End<>(Config.state_flags_color);
