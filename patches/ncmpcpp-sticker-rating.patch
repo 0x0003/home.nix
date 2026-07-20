@@ -1,5 +1,123 @@
+diff --git a/src/actions.cpp b/src/actions.cpp
+index eaf75feb..56822679 100644
+--- a/src/actions.cpp
++++ b/src/actions.cpp
+@@ -2748,6 +2748,49 @@ void ShowServerInfo::run()
+ 	myServerInfo->switchTo();
+ }
+ 
++static void doRate(HasSongs *hs, int value)
++{
++	auto songs = hs->getSelectedSongs();
++	for (const auto &s : songs)
++	{
++		const char *uri = s.c_uri();
++		if (!uri || !*uri)
++			continue;
++		try
++		{
++			if (value >= 0)
++				Mpd.SetSticker(uri, "rating", boost::lexical_cast<std::string>(value));
++			else
++				Mpd.DeleteSticker(uri, "rating");
++		}
++		catch (...) { }
++	}
++	MPD::clearRatingCache();
++	myScreen->refreshWindow();
++}
++
++bool RateTen::canBeRun()
++{
++	m_hs = dynamic_cast<HasSongs *>(myScreen);
++	return m_hs != nullptr && m_hs->itemAvailable();
++}
++
++void RateTen::run()
++{
++	doRate(m_hs, 10);
++}
++
++bool RateRemove::canBeRun()
++{
++	m_hs = dynamic_cast<HasSongs *>(myScreen);
++	return m_hs != nullptr && m_hs->itemAvailable();
++}
++
++void RateRemove::run()
++{
++	doRate(m_hs, -1);
++}
++
+ }
+ 
+ namespace {
+@@ -2886,6 +2929,8 @@ void populateActions()
+ 	insert_action(new Actions::ShowVisualizer());
+ 	insert_action(new Actions::ShowClock());
+ 	insert_action(new Actions::ShowServerInfo());
++	insert_action(new Actions::RateTen());
++	insert_action(new Actions::RateRemove());
+ 	for (size_t i = 0; i < AvailableActions.size(); ++i)
+ 	{
+ 		if (AvailableActions[i] == nullptr)
+diff --git a/src/actions.h b/src/actions.h
+index 8fba1890..719f98cf 100644
+--- a/src/actions.h
++++ b/src/actions.h
+@@ -164,6 +164,8 @@ enum class Type
+ 	ShowVisualizer,
+ 	ShowClock,
+ 	ShowServerInfo,
++	RateTen,
++	RateRemove,
+ 	_numberOfActions // needed to dynamically calculate size of action array
+ };
+ 
+@@ -1425,6 +1427,26 @@ private:
+ 	virtual void run() override;
+ };
+ 
++struct RateTen: BaseAction
++{
++	RateTen(): BaseAction(Type::RateTen, "rate_ten") { }
++
++private:
++	virtual bool canBeRun() override;
++	virtual void run() override;
++	HasSongs *m_hs;
++};
++
++struct RateRemove: BaseAction
++{
++	RateRemove(): BaseAction(Type::RateRemove, "rate_remove") { }
++
++private:
++	virtual bool canBeRun() override;
++	virtual void run() override;
++	HasSongs *m_hs;
++};
++
+ }
+ 
+ #endif // NCMPCPP_ACTIONS_H
+diff --git a/src/bindings.cpp b/src/bindings.cpp
+index d4f28690..deedeb64 100644
+--- a/src/bindings.cpp
++++ b/src/bindings.cpp
+@@ -760,6 +760,10 @@ void BindingsConfiguration::generateDefaults()
+ 	}
+ 	if (notBound(k = stringToKey("ctrl-p")))
+ 		bind(k, Actions::Type::SetSelectedItemsPriority);
++	if (notBound(k = stringToKey("alt-`")))
++		bind(k, Actions::Type::RateRemove);
++	if (notBound(k = stringToKey("alt-5")))
++		bind(k, Actions::Type::RateTen);
+ 	if (notBound(k = stringToKey("q")))
+ 		bind(k, Actions::Type::Quit);
+ }
 diff --git a/src/curses/menu_impl.h b/src/curses/menu_impl.h
-index cddafa8..2eea4be 100644
+index cddafa87..2eea4bea 100644
 --- a/src/curses/menu_impl.h
 +++ b/src/curses/menu_impl.h
 @@ -174,6 +174,8 @@ bool Menu<ItemT>::Goto(size_t y)
@@ -12,7 +130,7 @@ index cddafa8..2eea4be 100644
  	{
  		Window::clear();
 diff --git a/src/curses/window.cpp b/src/curses/window.cpp
-index 6c0b6d6..01e5586 100644
+index 6c0b6d6b..01e55869 100644
 --- a/src/curses/window.cpp
 +++ b/src/curses/window.cpp
 @@ -758,6 +758,8 @@ void Window::display()
@@ -25,7 +143,7 @@ index 6c0b6d6..01e5586 100644
  }
  
 diff --git a/src/display.cpp b/src/display.cpp
-index ddf8793..16ec545 100644
+index ddf87932..16ec5453 100644
 --- a/src/display.cpp
 +++ b/src/display.cpp
 @@ -73,6 +73,8 @@ const wchar_t *toColumnName(char c)
@@ -38,10 +156,10 @@ index ddf8793..16ec545 100644
  			return L"?";
  	}
 diff --git a/src/mpdpp.cpp b/src/mpdpp.cpp
-index 9a92e5d..d671ec9 100644
+index 9a92e5df..aa246407 100644
 --- a/src/mpdpp.cpp
 +++ b/src/mpdpp.cpp
-@@ -524,6 +524,30 @@ void Connection::SetReplayGainMode(ReplayGainMode mode)
+@@ -524,6 +524,51 @@ void Connection::SetReplayGainMode(ReplayGainMode mode)
  	checkErrors();
  }
  
@@ -69,24 +187,47 @@ index 9a92e5d..d671ec9 100644
 +	return result;
 +}
 +
++void Connection::SetSticker(const std::string &uri, const std::string &name, const std::string &value)
++{
++	prechecksNoCommandsList();
++	mpd_send_command(m_connection.get(), "sticker", "set", "song", uri.c_str(), name.c_str(), value.c_str(), NULL);
++	mpd_response_finish(m_connection.get());
++	checkErrors();
++}
++
++void Connection::DeleteSticker(const std::string &uri, const std::string &name)
++{
++	prechecksNoCommandsList();
++	mpd_send_command(m_connection.get(), "sticker", "delete", "song", uri.c_str(), name.c_str(), NULL);
++	mpd_response_finish(m_connection.get());
++	auto err = mpd_connection_get_error(m_connection.get());
++	if (err == MPD_ERROR_SERVER
++	    && mpd_connection_get_server_error(m_connection.get()) == MPD_SERVER_ERROR_NO_EXIST)
++		mpd_connection_clear_error(m_connection.get());
++	else if (err != MPD_ERROR_SUCCESS)
++		checkErrors();
++}
++
  void Connection::SetCrossfade(unsigned crossfade)
  {
  	prechecksNoCommandsList();
 diff --git a/src/mpdpp.h b/src/mpdpp.h
-index 902606d..10e7ac9 100644
+index 902606d7..cba295c7 100644
 --- a/src/mpdpp.h
 +++ b/src/mpdpp.h
-@@ -554,6 +554,8 @@ struct Connection
+@@ -554,6 +554,10 @@ struct Connection
  	std::string GetReplayGainMode();
  	void SetReplayGainMode(ReplayGainMode);
  	
 +	std::string GetSticker(const std::string &uri, const std::string &name);
++	void SetSticker(const std::string &uri, const std::string &name, const std::string &value);
++	void DeleteSticker(const std::string &uri, const std::string &name);
 +
  	void SetPriority(const MPD::Song &s, int prio);
  	
  	int AddSong(const std::string &, int = -1); // returns id of added song
 diff --git a/src/song.cpp b/src/song.cpp
-index c274d43..cc3fc87 100644
+index c274d43f..9fddab94 100644
 --- a/src/song.cpp
 +++ b/src/song.cpp
 @@ -25,6 +25,7 @@
@@ -184,7 +325,7 @@ index c274d43..cc3fc87 100644
  {
  	assert(m_song);
 diff --git a/src/song.h b/src/song.h
-index a86b56b..d1d5cae 100644
+index a86b56b2..d1d5caef 100644
 --- a/src/song.h
 +++ b/src/song.h
 @@ -72,6 +72,7 @@ struct Song
@@ -205,7 +346,7 @@ index a86b56b..d1d5cae 100644
  
  #endif // NCMPCPP_SONG_H
 diff --git a/src/status.cpp b/src/status.cpp
-index 6e86f47..0ab35c0 100644
+index 6e86f478..0ab35c09 100644
 --- a/src/status.cpp
 +++ b/src/status.cpp
 @@ -258,6 +258,13 @@ void Status::trace(bool update_timer, bool update_window_timeout)
@@ -232,7 +373,7 @@ index 6e86f47..0ab35c0 100644
  }
  
 diff --git a/src/utility/type_conversions.cpp b/src/utility/type_conversions.cpp
-index b546fa4..1a9eae1 100644
+index b546fa4a..1a9eae17 100644
 --- a/src/utility/type_conversions.cpp
 +++ b/src/utility/type_conversions.cpp
 @@ -196,6 +196,8 @@ MPD::Song::GetFunction charToGetFunction(char c)
