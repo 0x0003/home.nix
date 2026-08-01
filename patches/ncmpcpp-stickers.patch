@@ -1,5 +1,5 @@
 diff --git a/src/actions.cpp b/src/actions.cpp
-index eaf75feb..56822679 100644
+index eaf75feb..7f2eca11 100644
 --- a/src/actions.cpp
 +++ b/src/actions.cpp
 @@ -2748,6 +2748,49 @@ void ShowServerInfo::run()
@@ -23,7 +23,7 @@ index eaf75feb..56822679 100644
 +		}
 +		catch (...) { }
 +	}
-+	MPD::clearRatingCache();
++	MPD::clearStickerCache();
 +	myScreen->refreshWindow();
 +}
 +
@@ -143,15 +143,21 @@ index 6c0b6d6b..01e55869 100644
  }
  
 diff --git a/src/display.cpp b/src/display.cpp
-index ddf87932..16ec5453 100644
+index ddf87932..d5f96d2f 100644
 --- a/src/display.cpp
 +++ b/src/display.cpp
-@@ -73,6 +73,8 @@ const wchar_t *toColumnName(char c)
+@@ -73,6 +73,14 @@ const wchar_t *toColumnName(char c)
  			return L"Comment";
  		case 'P':
  			return L"Priority";
 +		case 'r':
 +			return L"Rating";
++		case 's':
++			return L"Plays";
++		case 'L':
++			return L"Last Played";
++		case 'S':
++			return L"First Played";
  		default:
  			return L"?";
  	}
@@ -226,35 +232,95 @@ index 902606d7..cba295c7 100644
  	void SetPriority(const MPD::Song &s, int prio);
  	
  	int AddSong(const std::string &, int = -1); // returns id of added song
+diff --git a/src/settings.cpp b/src/settings.cpp
+index c337fe5d..36bafc2b 100644
+--- a/src/settings.cpp
++++ b/src/settings.cpp
+@@ -81,6 +81,9 @@ std::vector<Column> generate_columns(const std::string &format)
+ 				col.type += tag_type[(++i)++]; // nice one.
+ 			while (tag_type[i] == '|');
+ 
++			if (col.type.find_first_of("rsLS") != std::string::npos)
++				col.display_empty_tag = 0;
++
+ 			// apply attributes
+ 			for (; i < tag_type.length(); ++i)
+ 			{
+@@ -392,6 +395,11 @@ bool Configuration::read(const std::vector<std::string> &config_paths, bool igno
+ 		      columns = generate_columns(v);
+ 		      return columns_to_format(columns);
+ 	      });
++	p.add("sticker_timestamp_format", &sticker_timestamp_format, "%Y-%m-%d %H:%M:%S", [](std::string v) {
++			if (v.empty())
++				return std::string("%Y-%m-%d %H:%M:%S");
++			return v;
++		});
+ 	p.add("execute_on_song_change", &execute_on_song_change, "", adjust_path);
+ 	p.add("execute_on_player_state_change", &execute_on_player_state_change,
+ 	      "", adjust_path);
+diff --git a/src/settings.h b/src/settings.h
+index e9a8af08..269972de 100644
+--- a/src/settings.h
++++ b/src/settings.h
+@@ -101,6 +101,7 @@ struct Configuration
+ 	std::vector<size_t> media_library_column_width_ratio_three;
+ 
+ 	std::vector<Column> columns;
++	std::string sticker_timestamp_format;
+ 
+ 	DisplayMode playlist_display_mode;
+ 	DisplayMode browser_display_mode;
 diff --git a/src/song.cpp b/src/song.cpp
-index c274d43f..9fddab94 100644
+index c274d43f..6cf60fa5 100644
 --- a/src/song.cpp
 +++ b/src/song.cpp
-@@ -25,6 +25,7 @@
+@@ -25,14 +25,55 @@
  #include <boost/lexical_cast.hpp>
  #include <iostream>
  #include <memory>
++#include <time.h>
 +#include <unordered_map>
  
  #include "curses/window.h"
++#include "settings.h"
  #include "song.h"
-@@ -33,6 +34,25 @@
+ #include "utility/type_conversions.h"
+ #include "utility/wide_string.h"
  
  namespace {
  
-+std::unordered_map<std::string, std::string> &ratingCache()
++std::unordered_map<std::string, std::string> &stickerCache()
 +{
 +	static std::unordered_map<std::string, std::string> cache;
 +	return cache;
++}
++
++std::string getCachedSticker(const char *uri, const std::string &name)
++{
++	if (!uri || !*uri)
++		return "";
++	std::string key = name + "\n" + uri;
++	auto &cache = stickerCache();
++	auto it = cache.find(key);
++	if (it != cache.end())
++		return it->second;
++	std::string value;
++	try {
++		value = Mpd.GetSticker(uri, name);
++	} catch (...) {
++		value = "";
++	}
++	cache[key] = value;
++	return value;
 +}
 +
 +} // anonymous namespace
 +
 +namespace MPD {
 +
-+void clearRatingCache()
++void clearStickerCache()
 +{
-+	ratingCache().clear();
++	stickerCache().clear();
 +}
 +
 +} // namespace MPD
@@ -264,7 +330,37 @@ index c274d43f..9fddab94 100644
  // Prepend '0' if the tag is a single digit number so that we get "expected"
  // sort order with regular string comparison.
  void format_numeric_tag(std::string &s)
-@@ -212,6 +232,59 @@ std::string Song::getPriority(unsigned idx) const
+@@ -42,6 +83,29 @@ void format_numeric_tag(std::string &s)
+ 		s = "0"+s;
+ }
+ 
++// Convert a Unix timestamp (seconds or milliseconds) to a human readable
++// string according to Config.sticker_timestamp_format.
++	std::string formatTimestamp(const std::string &val)
++	{
++		long long t = 0;
++		try {
++			t = boost::lexical_cast<long long>(val);
++		} catch (...) {
++			return "";
++		}
++		if (t <= 0)
++			return "";
++	if (t > 100000000000LL)
++		t /= 1000;
++		time_t tt = static_cast<time_t>(t);
++		tm tinfo;
++		localtime_r(&tt, &tinfo);
++		char buf[64];
++		if (strftime(buf, sizeof(buf), Config.sticker_timestamp_format.c_str(), &tinfo) == 0)
++			return "";
++		return buf;
++	}
++
+ size_t calc_hash(const char *s, size_t seed = 0)
+ {
+ 	for (; *s != '\0'; ++s)
+@@ -212,6 +276,73 @@ std::string Song::getPriority(unsigned idx) const
  	return boost::lexical_cast<std::string>(getPrio());
  }
  
@@ -272,38 +368,20 @@ index c274d43f..9fddab94 100644
 +{
 +	if (idx > 0)
 +		return "";
-+	const char *uri_ptr = c_uri();
-+	if (!uri_ptr || !*uri_ptr)
-+		return " ";
-+	std::string uri(uri_ptr);
-+	auto &cache = ratingCache();
-+	auto it = cache.find(uri);
-+	if (it != cache.end())
-+		return it->second;
-+	std::string val;
-+	try {
-+		val = Mpd.GetSticker(uri, "rating");
-+	} catch (...) {
-+		cache[uri] = " ";
-+		return " ";
-+	}
++	const char *uri = c_uri();
++	if (!uri || !*uri)
++		return "";
++	std::string val = getCachedSticker(uri, "rating");
 +	if (val.empty())
-+	{
-+		cache[uri] = " ";
-+		return " ";
-+	}
++		return "";
 +	int r = 0;
 +	try {
 +		r = boost::lexical_cast<int>(val);
 +	} catch (...) {
-+		cache[uri] = " ";
-+		return " ";
++		return "";
 +	}
 +	if (r <= 0)
-+	{
-+		cache[uri] = " ";
-+		return " ";
-+	}
++		return "";
 +	r = std::min(r, 10);
 +	static const std::string kFull = "\xe2\x98\x85";  // U+2605 black star
 +	static const std::string kHalf = "\xe2\xaf\xaa";  // U+2BEA star with left half black
@@ -317,36 +395,71 @@ index c274d43f..9fddab94 100644
 +		result += kHalf;
 +	for (int i = full + half; i < 5; ++i)
 +		result += kEmpty;
-+	cache[uri] = result;
 +	return result;
++}
++
++std::string Song::getPlayCount(unsigned idx) const
++{
++	if (idx > 0)
++		return "";
++	const char *uri = c_uri();
++	if (!uri || !*uri)
++		return "";
++	std::string val = getCachedSticker(uri, "playCount");
++	if (val.empty())
++		return "";
++	return val;
++}
++
++std::string Song::getLastPlayed(unsigned idx) const
++{
++	if (idx > 0)
++		return "";
++	const char *uri = c_uri();
++	if (!uri || !*uri)
++		return "";
++	return formatTimestamp(getCachedSticker(uri, "lastPlayed"));
++}
++
++std::string Song::getFirstPlayed(unsigned idx) const
++{
++	if (idx > 0)
++		return "";
++	const char *uri = c_uri();
++	if (!uri || !*uri)
++		return "";
++	return formatTimestamp(getCachedSticker(uri, "firstPlayed"));
 +}
 +
  std::string MPD::Song::getTags(GetFunction f) const
  {
  	assert(m_song);
 diff --git a/src/song.h b/src/song.h
-index a86b56b2..d1d5caef 100644
+index a86b56b2..42f31429 100644
 --- a/src/song.h
 +++ b/src/song.h
-@@ -72,6 +72,7 @@ struct Song
+@@ -72,6 +72,10 @@ struct Song
  	virtual std::string getComment(unsigned idx = 0) const;
  	virtual std::string getLength(unsigned idx = 0) const;
  	virtual std::string getPriority(unsigned idx = 0) const;
 +	virtual std::string getRating(unsigned idx = 0) const;
++	virtual std::string getPlayCount(unsigned idx = 0) const;
++	virtual std::string getLastPlayed(unsigned idx = 0) const;
++	virtual std::string getFirstPlayed(unsigned idx = 0) const;
  	
  	virtual std::string getTags(GetFunction f) const;
  	
-@@ -110,6 +111,8 @@ private:
+@@ -110,6 +114,8 @@ private:
  	size_t m_hash;
  };
  
-+void clearRatingCache();
++void clearStickerCache();
 +
  }
  
  #endif // NCMPCPP_SONG_H
 diff --git a/src/status.cpp b/src/status.cpp
-index 6e86f478..0ab35c09 100644
+index 6e86f478..622c1727 100644
 --- a/src/status.cpp
 +++ b/src/status.cpp
 @@ -258,6 +258,13 @@ void Status::trace(bool update_timer, bool update_window_timeout)
@@ -359,7 +472,7 @@ index 6e86f478..0ab35c09 100644
 +	s_in_update = true;
 +	struct Guard { ~Guard() { s_in_update = false; } } guard;
 +	if (event & (MPD_IDLE_STICKER | MPD_IDLE_PLAYLIST))
-+		MPD::clearRatingCache();
++		MPD::clearStickerCache();
  	auto st = Mpd.getStatus();
  	m_current_song_pos = st.currentSongPosition();
  	m_elapsed_time = st.elapsedTime();
@@ -373,15 +486,21 @@ index 6e86f478..0ab35c09 100644
  }
  
 diff --git a/src/utility/type_conversions.cpp b/src/utility/type_conversions.cpp
-index b546fa4a..1a9eae17 100644
+index b546fa4a..212dee12 100644
 --- a/src/utility/type_conversions.cpp
 +++ b/src/utility/type_conversions.cpp
-@@ -196,6 +196,8 @@ MPD::Song::GetFunction charToGetFunction(char c)
+@@ -196,6 +196,14 @@ MPD::Song::GetFunction charToGetFunction(char c)
  			return &MPD::Song::getComment;
  		case 'P':
  			return &MPD::Song::getPriority;
 +		case 'r':
 +			return &MPD::Song::getRating;
++		case 's':
++			return &MPD::Song::getPlayCount;
++		case 'L':
++			return &MPD::Song::getLastPlayed;
++		case 'S':
++			return &MPD::Song::getFirstPlayed;
  		default:
  			return nullptr;
  	}
