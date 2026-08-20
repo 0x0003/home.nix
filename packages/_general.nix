@@ -4,7 +4,7 @@
     chezmoi
     age
     bc
-    htop
+    btop
     # irssi
     libqalculate
     wego
