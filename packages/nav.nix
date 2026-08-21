@@ -1,4 +1,4 @@
-{ pkgs, ... }: {
+{ pkgs, fzf, ... }: {
   home.packages = with pkgs; [
     zoxide
     sesh
